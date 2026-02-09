@@ -1,3 +1,5 @@
+Before this Journal was composed:
+The mechanical design was chosen and printed. (their is a lost physical journal that details this if it is found the data will be added to this journal)
 2/2/2026:
 wrote software to debug GPS but the QWIIC cable seems to be unreliable. Therefore the reliability cannot be checked. 
 It was considered to try using the main wire bus but that would interfere with the IMU as they opperate at different voltages. But it were better long term that they should be kept sepparate because this allows for a faster data transfer.
@@ -6,3 +8,7 @@ However this was done temporalily to confirm that the issue is the wiring.
 2/3/2026:
 Having replaced the QWIIC cable the GPS seems to work but requires the system to check it frequently or the buffer will overflow and all data will be lost. 
 The GPS does not work well indoors, this should not be an issue at competition but will certainly make development harder as there are 6" of snow on the ground. This will be considered working for now.
+
+2/9/2026:
+The Motor was tested with the Servo test. because they both use RC car PWM they interface in the same way with the Arduino.
+it is regretted that  this log was not kept in detail from the start. as now i must recall what I did in earlier times.
