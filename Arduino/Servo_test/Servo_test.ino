@@ -1,24 +1,24 @@
-
-
+#define min_angle 87 //minimum angle in degrees
+#define max_angle 100 //maximum angle in degrees
 #include <Servo.h>
 
 Servo myservo;  // create servo object to control a servo
 // twelve servo objects can be created on most boards
 
-int pos = 0;    // variable to store the servo position
+int pos = 90;    // variable to store the servo position
 
 void setup() {
-  myservo.attach(D2);  // attaches the servo on pin 9 to the servo object
+  myservo.attach(D4);  // attaches the servo on pin 4 to the servo object
 }
 
 void loop() {
-  for (pos = 0; pos <= 180; pos += 1) { // goes from 0 degrees to 180 degrees
+  for (; pos <= max_angle; pos += 1) { // goes from min degrees to max degrees
     // in steps of 1 degree
     myservo.write(pos);              // tell servo to go to position in variable 'pos'
-    delay(30);                       // waits 15ms for the servo to reach the position
+    delay(60);                       // waits 15ms for the servo to reach the position
   }
-  for (pos = 180; pos >= 0; pos -= 1) { // goes from 180 degrees to 0 degrees
+  for (; pos >= min_angle; pos -= 1) { // goes from 180 degrees to 0 degrees
     myservo.write(pos);              // tell servo to go to position in variable 'pos'
-    delay(15);                       // waits 15ms for the servo to reach the position
+    delay(30);                       // waits 15ms for the servo to reach the position
   }
 }
