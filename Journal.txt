@@ -12,3 +12,6 @@ The GPS does not work well indoors, this should not be an issue at competition b
 2/9/2026:
 The Motor was tested with the Servo test. because they both use RC car PWM they interface in the same way with the Arduino.
 it is regretted that  this log was not kept in detail from the start. as now i must recall what I did in earlier times.
+
+2/24/2026:
+The Motor was tested in the chassis but this broke the motor mount and the gearbox connectors. So those will be reprinted with ABS and higher infill in their new variations. The Servo_test has been modified so that future oppperation of the motor can happen at much lower speeds.
