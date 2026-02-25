@@ -15,3 +15,10 @@ it is regretted that  this log was not kept in detail from the start. as now i m
 
 2/24/2026:
 The Motor was tested in the chassis but this broke the motor mount and the gearbox connectors. So those will be reprinted with ABS and higher infill in their new variations. The Servo_test has been modified so that future oppperation of the motor can happen at much lower speeds.
+
+2/25/2026:
+The IMU was discarded because of poor soldering and replaced with my own. mpu_tuner was created to test the new one and it works.
+
+The main code for competition was created and integrations for the individual components are being added to eventually build into a coherent whole. because they each have their own test it is hoped that this will not result in problems caused by a lack of testing as the code is built.
+
+The base is redesigned to hold the battery and ESC better.
