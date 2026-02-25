@@ -1,8 +1,8 @@
-// This code has 2 functions firs to verify the function of the device and second to calculate the standard offsetts of the device to account for bias
+// This code has 2 functions first to verify the function of the device and second to calculate the standard offsetts of the device to account for bias
 #include <Wire.h>
 
 // MPU6050 constants
-#define MPU6050_ADDR 0x69  // MPU6050 I2C address (default: 0x68)
+#define MPU6050_ADDR 0x69  // MPU6050 I2C address
 #define PWR_MGMT_1   0x6B  // Power management register
 #define MPU6050_BEGINING 0x3B  // Accelerometer data registers
 #define ACCEL_CONFIG 0x1C  // Accelerometer configuration register
@@ -40,7 +40,7 @@ void loop() {
   int16_t ax, ay, az, gx, gy, gz;
   int16_t temperature;
   long ax_sum = 0, ay_sum = 0, az_sum = 0, gx_sum = 0, gy_sum = 0, gz_sum = 0, temperature_sum=0;
-  long num_samples = 100;  // Number of samples for averaging do not exceed 65536 or bit overflow might happen
+  long num_samples = 256;  // Number of samples for averaging do not exceed 65536 or bit overflow might happen
 
   // Collect data for averaging
   for (long i = 0; i < num_samples; i++) {
@@ -81,13 +81,14 @@ void loop() {
   long gz_avg = gz_sum / num_samples;
   long temperature_avg=temperature_sum/num_samples;
 
-  // Multiply by 10000 for each axis and print the results
-  Serial.print("Accel X avg "); Serial.println(ax_avg );
-  Serial.print("Accel Y avg "); Serial.println(ay_avg);
-  Serial.print("Accel Z avg "); Serial.println(az_avg);
-  Serial.print("Gyro X avg  "); Serial.println(gx_avg);
-  Serial.print("Gyro Y avg: "); Serial.println(gy_avg );
-  Serial.print("Gyro Z avg  "); Serial.println(gz_avg );
-  Serial.print("temp avg  "); Serial.println(temperature_avg );
+  // Multiply by 10000 for each axis and print the results the resulting string litteral can be copied into a file that uses these as offsets
+  Serial.print("{"); Serial.print(ax_avg );
+  Serial.print(", "); Serial.print(ay_avg);
+  Serial.print(", "); Serial.print(az_avg);
+  Serial.print(", "); Serial.print(gx_avg);
+  Serial.print(", "); Serial.print(temperature_avg );
+  Serial.print(", "); Serial.print(gy_avg );
+  Serial.print(", "); Serial.print(gz_avg );
+  Serial.println("};");
   delay(200);  // Delay for .2 seconds before the next read cycle
 }
