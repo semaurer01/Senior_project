@@ -16,12 +16,14 @@ constexpr int mpu_offsets[7] = {-822, -612, 18412, -239, -3483, -236, 302};;
 
 #include <Servo.h>// This Library includes the control functions to interface with RC car Hobby components
 #include <Wire.h> // this library connects the IMU and GPS via IIC
-
+#include "SparkFun_I2C_GPS_Arduino_Library.h" // https://github.com/sparkfun/SparkFun_I2C_GPS_Arduino_Library
+#include "TinyGPSPlus.h"
 
 Servo steering;  // create servo object to control steering. this is the front servo
 Servo throttle;  //create another servo object to control throttle this actually controls the esc
 // twelve servo objects can be created on most boards
-
+I2CGPS myI2CGPS; // I2C object for communication
+TinyGPSPlus gps;//TinyGps object for interpretation
 //control variables
 int steering_angle = 90;    // variable to store the servo position
 int throttle_speed = 87;  //90 is stopped lower numbers faster. currently set very slow for testing
@@ -38,6 +40,7 @@ void setup() {
   Serial1.begin(9600);//connect to the bluetooth module over UART
 
   //sensors
+  //MPU
   Wire.begin();
   Wire.setClock(100000);// 100kHz
   // Wake up the MPU6050 as it starts in sleep mode
@@ -59,8 +62,19 @@ void setup() {
   Wire.write(GYRO_CONFIG);           // Select the gyroscope configuration register
   Wire.write(GYRO_CONFIG_VALUE);     // Set the gyroscope to 250°/s
   Wire.endTransmission(true);
+  //GPS
+  while (!myI2CGPS.begin(Wire1)) {//until connected to gps report error 2 (no connection)
+    bluetooth(3,-1);
+    delay(500);
+  }
+  Wire1.setClock(400000); // 400 kHz
+    myI2CGPS.enableDebugging(Serial);
+    // Build the PMTK packet for 10 Hz (100 ms)
+  String config = myI2CGPS.createMTKpacket(220, ",100"); 
+  // Send it
+  myI2CGPS.sendMTKpacket(config);
 }
-void bluetooth(int status,int error){ //debugging data this will be commented out during competition 
+void bluetooth(int status,int error){ //debugging data this will do nothing during competition 
   switch(status){
     case 0:// for when nothing is happening probably an error state
         Serial1.print("idling in state ");
@@ -76,7 +90,24 @@ void bluetooth(int status,int error){ //debugging data this will be commented ou
     case 2://when there is something wrong with the mpu
       Serial1.print("mpu error: ");
       Serial1.println(error);
+      return;
+    case 3://GPS error
+      Serial1.print("gps error: ");
+      Serial1.println(error);
+      return;
+    case 4://GPS update
+      Serial1.print(gps.location.lat(), 6);
+      Serial1.print(", ");
+      Serial1.print(gps.location.lng(), 6);
+
+      Serial1.print(", ");
+      Serial1.print(gps.satellites.value());
+
+      Serial1.print(", ");
+      Serial1.println(gps.hdop.hdop());
+    return;
   }//end switch
+  Serial1.print("invalid bluetooth");
 }
 
 void drive(){//this function controls the main driving opperations which must be done repeatedly.
@@ -100,9 +131,27 @@ void mpu(){
     mpu_data[i]=((Wire.read() << 8) | Wire.read())-mpu_offsets[i];
   }
 }
+bool gps_update(){
+    // Read all available bytes from GPS
+    int bytesAvailable = myI2CGPS.available();
+
+  for (int i = 0; i < bytesAvailable; i++) {
+    char c = myI2CGPS.read();
+    gps.encode(c);
+  }
+  return gps.location.isUpdated();
+}
 void loop() {
   // put your main code here, to run repeatedly:
+  for(int i=0;i<100;i++){
   drive();
-  bluetooth(1,0);
   mpu();
+  if(gps_update()){
+    bluetooth(4,0);
+  }else if(gps.satellites.value()<5){
+    bluetooth(3,gps.satellites.value());
+  }
+
+  }
+  bluetooth(1,0);
 }
