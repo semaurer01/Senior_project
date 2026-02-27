@@ -22,3 +22,6 @@ The IMU was discarded because of poor soldering and replaced with my own. mpu_tu
 The main code for competition was created and integrations for the individual components are being added to eventually build into a coherent whole. because they each have their own test it is hoped that this will not result in problems caused by a lack of testing as the code is built.
 
 The base is redesigned to hold the battery and ESC better.
+
+2/27/2026:
+connected and expanded the bluetooth section of Senior project to include debugging of sensor data verified the data as resonable. added GPS to Senior project. Created wire.txt to record the configuration of the wires of the main circuitry, this is assembled to demonstrate validity. 
