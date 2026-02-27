@@ -1,0 +1,29 @@
+Resistor Values
+R1=1.8kΩ
+R2=1.9kΩ
+
+Arduino
+Arduino GND        |GND
+Arduino 5v         |5v
+
+GPS
+GPS QWIIC          |Arduino QWIIC
+
+MPU
+MPU VCC            |5v
+MPU GND            |GND
+MPU SCL            |Arduino D19
+MPU SDA            |Arduino D18
+MPU AD0            |5v
+
+Bluetooth
+BT Vcc             |5v
+BT GND             |GND
+BT Tx              |Andiuno D1
+BT Rx              |NODE 1
+
+Resistors
+R1+                |Arduino D0
+R1-                |Node 1
+R2+                |NODE 1
+R2-                |GND
