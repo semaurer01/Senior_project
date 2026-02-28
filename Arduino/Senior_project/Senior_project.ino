@@ -18,6 +18,11 @@
 #define GYRO_CONFIG_VALUE 0  // sets limits to 250°/s
 #define GYRO_UNITS_TO_DEGREES 131.0
 
+//Kalman Constants
+#define minimum_speed_for_kalman_update .2 // m/s if the vehicle is not moving the gps data will be inaccurate
+#define kalman_size 3 //number of variables tracked
+
+
 #include <Servo.h>// This Library includes the control functions to interface with RC car Hobby components
 #include <Wire.h> // this library connects the IMU and GPS via IIC
 #include "SparkFun_I2C_GPS_Arduino_Library.h" // https://github.com/sparkfun/SparkFun_I2C_GPS_Arduino_Library
@@ -39,18 +44,28 @@ int16_t mpu_offsets[7] = {-822, -612, 18412, -239, -3483, -236, 302};
 
 float gps_data [4];//gps latitude longtitude speed direction
 
-// ===== HEADING KALMAN FILTER =====
-float heading_est = 0.0;
-float gyro_bias = 0.0;
+// ===== HEADING + SPEED KALMAN FILTER =====
+float heading_est = 0.0;   // filtered heading
+float gyro_bias   = 0.0;   // estimated gyro bias
+float speed_est   = 0.0;   // filtered speed (m/s)
 
-//covariance matrix tracks uncertainty and correlation between the various feilds 
-float P[2][2] = {{1,0},{0,1}};
+// Covariance matrix (3x3)
+float P[3][3] = {
+  {1, 0, 0},  // P00, P01, P02
+  {0, 1, 0},  // P10, P11, P12
+  {0, 0, 5}   // P20, P21, P22
+};
 
-float Q_angle = 0.05;
-float Q_bias  = 0.003;
-float R_gps   = 4.0;
+// Process noise
+float Q_angle = 0.05;    // gyro noise
+float Q_bias  = 0.003;   // gyro bias drift
+float Q_speed = 0.5;     // speed process noise
 
-unsigned long lastTime = 0;
+// Measurement noise
+float R_gps_heading = 1.0;  // GPS heading noise
+float R_gps_speed   = 0.15;  // GPS speed noise
+
+unsigned long lastTime = 0; //timing the difference between gps updates
 
 void setup() {
   //steering and drive
@@ -89,11 +104,13 @@ void setup() {
     delay(500);
   }
   Wire1.setClock(400000); // 400 kHz
-    myI2CGPS.enableDebugging(Serial);
-    // Build the PMTK packet for 10 Hz (100 ms)
-  String config = myI2CGPS.createMTKpacket(220, ",100"); 
+    // Build the PMTK packet for 100 Hz (1000 ms)
+  String config = myI2CGPS.createMTKpacket(220, ",1000"); 
   // Send it
   myI2CGPS.sendMTKpacket(config);
+
+  //last thing before loop start timer
+  lastTime =micros();
 }
 void bluetooth(int status,int error){ //debugging data this will do nothing during competition 
   switch(status){
@@ -125,10 +142,36 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
         }
     return;
     case 5://Kalman output
+      Serial1.print(gps.satellites.value());
+      Serial1.print(", ");
+      Serial1.print(gps_data[2],6);
+      Serial1.print(", ");
+      Serial1.print(speed_est, 6);
+      Serial1.print(", ");
       Serial1.println(heading_est);
     return;
+    case 6://kalman error checking
+      for(int i=0;i<kalman_size;i++){
+        for(int j=0;j<kalman_size;j++){
+          if(P[i][j]<0){
+            Serial1.print("Negative Covariance:");
+            Serial1.print(i);
+            Serial1.print(", ");
+            Serial1.println(j);
+            return;
+          }
+        }
+      }
+      if(abs(heading_est-gps_data[3])>30){
+        Serial1.print("heading estimate off: ");
+        Serial1.println(heading_est-gps_data[3]);
+        return;
+      }
+      
+    return;
   }//end switch
-  Serial1.print("invalid bluetooth");
+
+  Serial1.println("invalid bluetooth");
 }
 
 void drive(){//this function controls the main driving opperations which must be done repeatedly.
@@ -160,50 +203,103 @@ bool gps_update(){
     char c = myI2CGPS.read();
     gps.encode(c);
   }
-  gps_data[0]=(gps.location.lat()-Start_latitude)*degree_to_meter;
-  gps_data[1]=(gps.location.lng()-Start_longtitude)*degree_to_meter*cosine_latitude;
-  gps_data[2]=gps.speed.mps();
-  gps_data[3]=gps.course.deg();
-  return gps.location.isUpdated();
+  //if there is no data return
+  if(!gps.location.isUpdated() &&
+     !gps.speed.isUpdated() &&
+     !gps.course.isUpdated()) return false;
+  //if data is invalid do not use
+  if(!gps.location.isValid()){
+    gps_data[0]=(gps.location.lat()-Start_latitude)*degree_to_meter;
+    gps_data[1]=(gps.location.lng()-Start_longtitude)*degree_to_meter*cosine_latitude;  
+  }
+  if(!gps.course.isValid()) gps_data[2]=gps.speed.mps();
+  if(!gps.speed.isValid())  gps_data[3]=gps.course.deg();
+  //update data 
+  //return valid if there is new data
+  return true;
 }
 
 void kalman_predict( float dt)
 {
   // increment the heading estimate by the z axis portion of the gyroscope data
-  heading_est += (mpu_data[5]*dt)/GYRO_UNITS_TO_DEGREES;
-
+  heading_est += ((mpu_data[5])/GYRO_UNITS_TO_DEGREES-gyro_bias)*dt;
+  speed_est = speed_est;// temporarily constant speed estimate until(to be adjusted for acceleration)
   // Wrap heading
   if(heading_est > 180) heading_est -= 360;
   if(heading_est < -180) heading_est += 360;
+  // ---- Covariance prediction ----
+    // Save old values first
+float P00 = P[0][0];
+float P01 = P[0][1];
+float P10 = P[1][0];
+float P11 = P[1][1];
+float P02 = P[0][2];
+float P12 = P[1][2];
 
-  P[0][0] += dt * (dt*P[1][1] - P[0][1] - P[1][0] + Q_angle);
-  P[0][1] -= dt * P[1][1];
-  P[1][0] -= dt * P[1][1];
-  P[1][1] += Q_bias * dt;
+// ---- Heading variance ----
+P[0][0] = P00//Original value
+          - dt*(P10 + P01)//less the covariance between Heading and bias
+          + dt*dt*P11//Plus the variance in bias
+          + Q_angle*dt;//Plus the raw uncertainty
+
+// ---- Heading-bias covariance ----
+P[0][1] = P01 - dt*P11;
+P[1][0] = P10 - dt*P11;
+
+// ---- Bias variance ----
+P[1][1] = P11 + Q_bias*dt;
+
+// ---- Speed block (no coupling yet) ----
+P[0][2] = P02;
+P[2][0] = P02;
+
+P[1][2] = P12;
+P[2][1] = P12;
+
+P[2][2] += Q_speed*dt;
 }
 
 void kalman_update()
 {
-  float y = gps_data[3] - heading_est;
+// ---- Heading update ----
+  float y_heading = gps_data[3] - heading_est;
+  if(y_heading > 180) y_heading -= 360; //wraparound heading
+  if(y_heading < -180) y_heading += 360;
+//calculate K matrix
+  float S_heading = P[0][0] + R_gps_heading;
+  float K0 = P[0][0] / S_heading;
+  float K1 = P[1][0] / S_heading;
+  float K2 = P[2][0] / S_heading; // speed gets corrected via correlation
+  
+//update estimates
+  heading_est += K0 * y_heading;
+  gyro_bias+= K1 * y_heading;
+  speed_est += K2 *y_heading;
+ // Update covariance
+    float P00 = P[0][0]; float P01 = P[0][1]; float P02 = P[0][2];//store temporary values
+    //because covariance is trianglular only calculate top and make bottom a copy of it
+    //First row: correlation between heading and... 
+    P[0][0] -= K0 * P00;//Heading, that is uncertainty
+    P[0][1] -= K0 * P01;//gyro bias
+    P[0][2] -= K0 * P02;//speed
+    
+    //Second row: correlation between the gyro bias and...
+    P[1][0] =  P[0][1]; //copy earlier values
+    P[1][1] -= K1 * P01;//gyro bias, that is uncertainty
+    P[1][2] -= K1 * P02;//speed
+    
+    //Third row: correlation between the speed and...
+    P[2][0] =  P[0][2];//copy earlier values
+    P[2][1] =  P[1][2];//copy earlier values
+    P[2][2] -= K2 * P02;//speed that is uncertainty
 
-  if(y > 180) y -= 360;
-  if(y < -180) y += 360;
+    // ---- Speed update ----
+    float y_speed = gps_data[2] - speed_est;
+    float S_speed = P[2][2] + R_gps_speed;
+    float K_speed = P[2][2] / S_speed;
 
-  float S = P[0][0] + R_gps;
-
-  float K0 = P[0][0] / S;
-  float K1 = P[1][0] / S;
-
-  heading_est += K0 * y;
-  mpu_offsets[5]+= K1 * y * GYRO_UNITS_TO_DEGREES;
-
-  float P00 = P[0][0];
-  float P01 = P[0][1];
-
-  P[0][0] -= K0 * P00;
-  P[0][1] -= K0 * P01;
-  P[1][0] -= K1 * P00;
-  P[1][1] -= K1 * P01;
+    speed_est += K_speed * y_speed;
+    P[2][2] -= K_speed * P[2][2];
 }
 void loop() {
 
@@ -219,13 +315,13 @@ void loop() {
 
   // ---- PREDICT ----
   kalman_predict(dt);
-
   // ---- GPS UPDATE ----
-  if(gps_update() && gps.speed.mps() > 1.0) {
+  if(gps_update()) {// if the gps updated and the car is moving
+    if(gps_data[2] > minimum_speed_for_kalman_update){
     kalman_update();
-    bluetooth(4,0);
+    }
   }
-  else if(gps.satellites.value() < 5){
+  if(gps.satellites.value() < 4){
     bluetooth(3,gps.satellites.value());
   }
   bluetooth(5,0);
