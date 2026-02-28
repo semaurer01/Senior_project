@@ -2,6 +2,12 @@
 #define min_steering_angle 87 //minimum angle in degrees
 #define max_steering_angle 100 //maximum angle in degrees
 
+//GPS
+#define Start_latitude 41.068380
+#define Start_longtitude -85.214177
+#define earth_radius_meters 6369755 
+#define degree_to_meter earth_radius_meters*2*PI/360
+#define cosine_latitude 0.7539260652501040
 // MPU6050 constants
 #define MPU6050_ADDR 0x69  // MPU6050 I2C address
 #define PWR_MGMT_1   0x6B  // Power management register
@@ -30,7 +36,7 @@ int throttle_speed = 87;  //90 is stopped lower numbers faster. currently set ve
 
 //data variables 
 int16_t mpu_data [7];//stores raw data from the mpu
-
+float gps_data [4];
 void setup() {
   //steering and drive
   steering.attach(D4);  // attaches the servo on pin 4 to the steering object
@@ -81,6 +87,7 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
         Serial1.println(error);
         return;
     case 1://debug MPU
+        Serial1.println("mpu update:");
         for(int i=0; i<7;i++){
           Serial1.print(mpu_data[i]);
           Serial1.print(", ");
@@ -96,15 +103,11 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
       Serial1.println(error);
       return;
     case 4://GPS update
-      Serial1.print(gps.location.lat(), 6);
-      Serial1.print(", ");
-      Serial1.print(gps.location.lng(), 6);
-
-      Serial1.print(", ");
-      Serial1.print(gps.satellites.value());
-
-      Serial1.print(", ");
-      Serial1.println(gps.hdop.hdop());
+      Serial1.println("gps update:");
+              for(int i=0; i<3;i++){
+          Serial1.print(gps_data[i]);
+          Serial1.print(", ");
+        }
     return;
   }//end switch
   Serial1.print("invalid bluetooth");
@@ -139,11 +142,14 @@ bool gps_update(){
     char c = myI2CGPS.read();
     gps.encode(c);
   }
+  gps_data[0]=(gps.location.lat()-Start_latitude)*degree_to_meter;
+  gps_data[1]=(gps.location.lng()-Start_longtitude)*degree_to_meter*cosine_latitude;
+  gps_data[2]=gps.speed.mps();
+  gps_data[3]=gps.course.deg();
   return gps.location.isUpdated();
 }
 void loop() {
   // put your main code here, to run repeatedly:
-  for(int i=0;i<100;i++){
   drive();
   mpu();
   if(gps_update()){
@@ -152,6 +158,4 @@ void loop() {
     bluetooth(3,gps.satellites.value());
   }
 
-  }
-  bluetooth(1,0);
 }
