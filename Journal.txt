@@ -24,4 +24,9 @@ The main code for competition was created and integrations for the individual co
 The base is redesigned to hold the battery and ESC better.
 
 2/27/2026:
-connected and expanded the bluetooth section of Senior project to include debugging of sensor data verified the data as resonable. added GPS to Senior project. Created wire.txt to record the configuration of the wires of the main circuitry, this is assembled to demonstrate validity. 
+connected and expanded the bluetooth section of Senior project to include debugging of sensor data verified the data as resonable. added GPS to Senior project. Created wire.txt to record the configuration of the wires of the main circuitry, this is assembled to demonstrate validity.
+
+3/3/2026:
+Senior project has been expanded to include all parts except the encoder (as their is still no way to connect that to the chassis). A preliminary Kalman filter has been implemented but it is unstable and regulary sets things to nan. 
+
+The drive shaft failed again this time only the motor gear itself that is to be modified and reprinted with petg.
