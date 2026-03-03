@@ -17,11 +17,12 @@
 #define ACCEL_CONFIG_VALUE 0  // sets limits to 2g
 #define GYRO_CONFIG_VALUE 0  // sets limits to 250°/s
 #define GYRO_UNITS_TO_DEGREES 131.0
+#define ACCEL_UNITS_TO_MS2 (9.81 / 16384.0)
 
 //Kalman Constants
 #define minimum_speed_for_kalman_update .2 // m/s if the vehicle is not moving the gps data will be inaccurate
-#define kalman_size 3 //number of variables tracked
-
+#define kalman_size 4 //number of variables tracked
+#define MAX_M 6 //largest matrix allowed
 
 #include <Servo.h>// This Library includes the control functions to interface with RC car Hobby components
 #include <Wire.h> // this library connects the IMU and GPS via IIC
@@ -35,7 +36,8 @@ I2CGPS myI2CGPS; // I2C object for communication
 TinyGPSPlus gps;//TinyGps object for interpretation
 //control variables
 int steering_angle = 90;    // variable to store the servo position
-int throttle_speed = 87;  //90 is stopped lower numbers faster. currently set very slow for testing
+int throttle_speed = 80;
+//90 is stopped lower numbers faster. currently set very slow for testing. although aparrently 86 is still stopped and 87 is pretty fast.
 
 //data variables 
 int16_t mpu_data [7];//stores raw data from the mpu
@@ -48,18 +50,20 @@ float gps_data [4];//gps latitude longtitude speed direction
 float heading_est = 0.0;   // filtered heading
 float gyro_bias   = 0.0;   // estimated gyro bias
 float speed_est   = 0.0;   // filtered speed (m/s)
-
+float accel_bias  = 0.0;   //estimated accelerometer bias
 // Covariance matrix (3x3)
-float P[3][3] = {
-  {1, 0, 0},  // P00, P01, P02
-  {0, 1, 0},  // P10, P11, P12
-  {0, 0, 5}   // P20, P21, P22
+float P[kalman_size][kalman_size] = {
+  {1, 0, 0, 0},  // P00, P01, P02, P03
+  {0, 1, 0, 0},  // P10, P11, P12, P13
+  {0, 0, 5, 0},  // P20, P21, P22, P23
+  {0, 0, 0, 2}   // P30, P31, P32, P33
 };
 
 // Process noise
 float Q_angle = 0.05;    // gyro noise
-float Q_bias  = 0.003;   // gyro bias drift
+float Q_gyro_bias  = 0.003;   // gyro bias drift
 float Q_speed = 0.5;     // speed process noise
+float Q_accel_bias = 0.002;//accelerometer bias drift
 
 // Measurement noise
 float R_gps_heading = 1.0;  // GPS heading noise
@@ -71,7 +75,8 @@ void setup() {
   //steering and drive
   steering.attach(D4);  // attaches the servo on pin 4 to the steering object
   throttle.attach(D8); //attaches the ESC on pin 8 to the throttle object
-  
+  throttle.write(90);
+  int throttle_start=millis();
   //Bluetooth/debugging
   Serial1.begin(9600);//connect to the bluetooth module over UART
 
@@ -110,6 +115,7 @@ void setup() {
   myI2CGPS.sendMTKpacket(config);
 
   //last thing before loop start timer
+  while(millis()-throttle_start<1000);
   lastTime =micros();
 }
 void bluetooth(int status,int error){ //debugging data this will do nothing during competition 
@@ -208,99 +214,249 @@ bool gps_update(){
      !gps.speed.isUpdated() &&
      !gps.course.isUpdated()) return false;
   //if data is invalid do not use
-  if(!gps.location.isValid()){
+  if(gps.location.isValid()){
     gps_data[0]=(gps.location.lat()-Start_latitude)*degree_to_meter;
     gps_data[1]=(gps.location.lng()-Start_longtitude)*degree_to_meter*cosine_latitude;  
   }
-  if(!gps.course.isValid()) gps_data[2]=gps.speed.mps();
-  if(!gps.speed.isValid())  gps_data[3]=gps.course.deg();
+  if(gps.speed.isValid()) gps_data[2]=gps.speed.mps();
+  if(gps.course.isValid())  gps_data[3]=gps.course.deg();
   //update data 
   //return valid if there is new data
   return true;
+}
+
+bool mat_inverse(float A[][MAX_M], float A_inv[][MAX_M], int m)
+{
+    // Create augmented matrix [A | I]
+    float aug[MAX_M][2*MAX_M];
+
+    for(int i=0;i<m;i++){
+        for(int j=0;j<m;j++)
+            aug[i][j] = A[i][j];
+
+        for(int j=0;j<m;j++)
+            aug[i][j+m] = (i==j) ? 1.0f : 0.0f;
+    }
+
+    // Gauss-Jordan elimination
+    for(int i=0;i<m;i++)
+    {
+        float pivot = aug[i][i];
+
+        if (fabs(pivot) < 1e-8)
+            return false; // singular matrix
+
+        // Normalize pivot row
+        for(int j=0;j<2*m;j++)
+            aug[i][j] /= pivot;
+
+        // Eliminate other rows
+        for(int k=0;k<m;k++)
+        {
+            if(k==i) continue;
+
+            float factor = aug[k][i];
+            for(int j=0;j<2*m;j++)
+                aug[k][j] -= factor * aug[i][j];
+        }
+    }
+
+    // Extract inverse
+    for(int i=0;i<m;i++)
+        for(int j=0;j<m;j++)
+            A_inv[i][j] = aug[i][j+m];
+
+    return true;
 }
 
 void kalman_predict( float dt)
 {
   // increment the heading estimate by the z axis portion of the gyroscope data
   heading_est += ((mpu_data[5])/GYRO_UNITS_TO_DEGREES-gyro_bias)*dt;
-  speed_est = speed_est;// temporarily constant speed estimate until(to be adjusted for acceleration)
+  // ---- Forward acceleration ----
+  float accel_forward = mpu_data[0] * ACCEL_UNITS_TO_MS2;//
+  // Predict speed
+  speed_est += (accel_forward-accel_bias) * dt;
+  if(speed_est < 0) speed_est = 0;//speed cannot be negative
   // Wrap heading
   if(heading_est > 180) heading_est -= 360;
   if(heading_est < -180) heading_est += 360;
   // ---- Covariance prediction ----
     // Save old values first
-float P00 = P[0][0];
-float P01 = P[0][1];
-float P10 = P[1][0];
-float P11 = P[1][1];
-float P02 = P[0][2];
-float P12 = P[1][2];
+  float P00 = P[0][0];
+  float P01 = P[0][1];
+  float P10 = P[1][0];
+  float P11 = P[1][1];
+  float P02 = P[0][2];
+  float P12 = P[1][2];
 
-// ---- Heading variance ----
-P[0][0] = P00//Original value
+  // ---- Heading variance ----
+  P[0][0] = P00//Original value
           - dt*(P10 + P01)//less the covariance between Heading and bias
           + dt*dt*P11//Plus the variance in bias
           + Q_angle*dt;//Plus the raw uncertainty
 
-// ---- Heading-bias covariance ----
-P[0][1] = P01 - dt*P11;
-P[1][0] = P10 - dt*P11;
+  // ---- Heading-bias covariance ----
+  P[0][1] = P01 - dt*P11;
+  P[1][0] = P10 - dt*P11;
 
-// ---- Bias variance ----
-P[1][1] = P11 + Q_bias*dt;
+  // ---- Bias variance ----
+  P[1][1] = P11 + Q_gyro_bias*dt;
 
-// ---- Speed block (no coupling yet) ----
-P[0][2] = P02;
-P[2][0] = P02;
+  // ---- Speed block (no coupling yet) ----
+  P[0][2] = P02;
+  P[2][0] = P02;
 
-P[1][2] = P12;
-P[2][1] = P12;
+  P[1][2] = P12;
+  P[2][1] = P12;
 
-P[2][2] += Q_speed*dt;
+  // Speed variance
+  P[2][2] += Q_speed * dt * dt;
+
+  // Coupling with accel bias
+  P[2][3] -= dt * P[3][3];
+  P[3][2] = P[2][3];
+
+  // Accel bias variance
+  P[3][3] += Q_accel_bias * dt;
 }
 
-void kalman_update()
-{
-// ---- Heading update ----
-  float y_heading = gps_data[3] - heading_est;
-  if(y_heading > 180) y_heading -= 360; //wraparound heading
-  if(y_heading < -180) y_heading += 360;
-//calculate K matrix
-  float S_heading = P[0][0] + R_gps_heading;
-  float K0 = P[0][0] / S_heading;
-  float K1 = P[1][0] / S_heading;
-  float K2 = P[2][0] / S_heading; // speed gets corrected via correlation
-  
-//update estimates
-  heading_est += K0 * y_heading;
-  gyro_bias+= K1 * y_heading;
-  speed_est += K2 *y_heading;
- // Update covariance
-    float P00 = P[0][0]; float P01 = P[0][1]; float P02 = P[0][2];//store temporary values
-    //because covariance is trianglular only calculate top and make bottom a copy of it
-    //First row: correlation between heading and... 
-    P[0][0] -= K0 * P00;//Heading, that is uncertainty
-    P[0][1] -= K0 * P01;//gyro bias
-    P[0][2] -= K0 * P02;//speed
-    
-    //Second row: correlation between the gyro bias and...
-    P[1][0] =  P[0][1]; //copy earlier values
-    P[1][1] -= K1 * P01;//gyro bias, that is uncertainty
-    P[1][2] -= K1 * P02;//speed
-    
-    //Third row: correlation between the speed and...
-    P[2][0] =  P[0][2];//copy earlier values
-    P[2][1] =  P[1][2];//copy earlier values
-    P[2][2] -= K2 * P02;//speed that is uncertainty
+void kalman_update() {
 
-    // ---- Speed update ----
-    float y_speed = gps_data[2] - speed_est;
-    float S_speed = P[2][2] + R_gps_speed;
-    float K_speed = P[2][2] / S_speed;
+  const int n = 4; // states
+  const int m = 2; // measurements
 
-    speed_est += K_speed * y_speed;
-    P[2][2] -= K_speed * P[2][2];
+  // ---- Build state vector ----
+  float x[n] = { heading_est, gyro_bias, speed_est, accel_bias };
+
+  // ---- Measurement vector ----
+  float z[m] = { gps_data[3], gps_data[2] };
+
+  // ---- Measurement matrix H (2x4) ----
+  float H[m][n] = {
+    {1,0,0,0},
+    {0,0,1,0}
+  };
+
+  // ---- Measurement noise ----
+  float R[m][m] = {
+    {R_gps_heading, 0},
+    {0, R_gps_speed}
+  };
+
+  // ---- Innovation y = z - Hx ----
+  float y[m];
+
+  for(int i=0;i<m;i++){
+    y[i] = z[i];
+    for(int j=0;j<n;j++)
+      y[i] -= H[i][j] * x[j];
+  }
+
+  // Wrap heading innovation
+  if(y[0] > 180) y[0] -= 360;
+  if(y[0] < -180) y[0] += 360;
+
+  // ---- S = HPH^T + R ----
+  float S[MAX_M][MAX_M] = {0};
+
+  for(int i=0;i<m;i++)
+    for(int j=0;j<m;j++){
+      for(int k=0;k<n;k++)
+        for(int l=0;l<n;l++)
+          S[i][j] += H[i][k] * P[k][l] * H[j][l];
+      S[i][j] += R[i][j];
+    }
+
+  float S_inv[MAX_M][MAX_M];
+
+  if(!mat_inverse(S, S_inv, m)) {
+   // handle singular matrix (skip update)
+    return;
+  }
+  // ---- K = P H^T S^-1 ----
+  float K[n][m] = {0};
+
+  for(int i=0;i<n;i++)
+    for(int j=0;j<m;j++)
+      for(int k=0;k<n;k++)
+        for(int l=0;l<m;l++)
+          K[i][j] += P[i][k] * H[l][k] * S_inv[l][j];
+
+  // ---- x = x + K y ----
+  for(int i=0;i<n;i++)
+    for(int j=0;j<m;j++)
+      x[i] += K[i][j] * y[j];
+
+// ---- Joseph Form Covariance Update ----
+// P = (I - K H) P (I - K H)^T + K R K^T
+
+float I[n][n] = {0};
+for(int i=0;i<n;i++) I[i][i] = 1;
+
+// KH = K * H
+float KH[n][n] = {0};
+for(int i=0;i<n;i++)
+  for(int j=0;j<n;j++)
+    for(int k=0;k<m;k++)
+      KH[i][j] += K[i][k] * H[k][j];
+
+// A = I - KH
+float A[n][n];
+for(int i=0;i<n;i++)
+  for(int j=0;j<n;j++)
+    A[i][j] = I[i][j] - KH[i][j];
+
+// temp = A * P
+float temp[n][n] = {0};
+for(int i=0;i<n;i++)
+  for(int j=0;j<n;j++)
+    for(int k=0;k<n;k++)
+      temp[i][j] += A[i][k] * P[k][j];
+
+// newP = temp * A^T
+float newP[n][n] = {0};
+for(int i=0;i<n;i++)
+  for(int j=0;j<n;j++)
+    for(int k=0;k<n;k++)
+      newP[i][j] += temp[i][k] * A[j][k];  // A^T indexing
+
+// KR = K * R
+float KR[n][m] = {0};
+for(int i=0;i<n;i++)
+  for(int j=0;j<m;j++)
+    for(int k=0;k<m;k++)
+      KR[i][j] += K[i][k] * R[k][j];
+
+// KRK^T term
+for(int i=0;i<n;i++)
+  for(int j=0;j<n;j++)
+    for(int k=0;k<m;k++)
+      newP[i][j] += KR[i][k] * K[j][k];  // K^T indexing
+
+//enforce symetry
+for(int i=0;i<n;i++)
+  for(int j=i+1;j<n;j++){
+    float avg = 0.5f * (P[i][j] + P[j][i]);
+    newP[i][j] = avg;
+    newP[j][i] = avg;
+  }
+
+// Copy back
+for(int i=0;i<n;i++)
+  for(int j=0;j<n;j++)
+    P[i][j] = newP[i][j];
+  // Save state back
+  heading_est = x[0];
+  gyro_bias   = x[1];
+  speed_est   = x[2];
+  accel_bias  = x[3];
+
+  // Wrap heading
+  if(heading_est > 180) heading_est -= 360;
+  if(heading_est < -180) heading_est += 360;
 }
+
 void loop() {
 
   drive();
