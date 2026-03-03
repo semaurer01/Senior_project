@@ -4,7 +4,7 @@ R2=1.9kΩ
 
 Arduino
 Arduino GND        |GND
-Arduino 5v         |5v
+Arduino Vin        |5v
 
 GPS
 GPS QWIIC          |Arduino QWIIC
@@ -21,6 +21,16 @@ BT Vcc             |5v
 BT GND             |GND
 BT Tx              |Andiuno D1
 BT Rx              |NODE 1
+
+ESC
+ESC GND            |GND
+ESC 5v             |5v
+ESC input          |Arduino D8
+
+Servo
+Servo GND          |GND
+Servo 5v           |5v
+Servo input        |Arduino D4
 
 Resistors
 R1+                |Arduino D0
