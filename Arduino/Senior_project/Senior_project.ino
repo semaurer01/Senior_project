@@ -2,12 +2,13 @@
 #define min_steering_angle 60 //minimum angle in degrees
 #define max_steering_angle 110 //maximum angle in degrees
 #define steering_center 80 //the angle offset that is strait.
+#define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
 //GPS
-#define Start_latitude 41.068380
-#define Start_longtitude -85.214177
-#define earth_radius_meters 6369755 
-#define degree_to_meter earth_radius_meters*2*PI/360
-#define cosine_latitude 0.7539260652501040
+float start_latitude   = 41.05312;//estimate of initial location
+float start_longtitude = -85.107493;//estimate of initial location
+#define earth_radius_meters 6361632 
+#define degree_to_meter earth_radius_meters*PI/180
+#define cosine_latitude 0.7541010112304150//doesn't need to change dynamically because machine will always be near start.
 // MPU6050 constants
 #define MPU6050_ADDR 0x69  // MPU6050 I2C address
 #define PWR_MGMT_1   0x6B  // Power management register
@@ -16,20 +17,37 @@
 #define GYRO_CONFIG 0x1B   // Gyroscope configuration register
 #define ACCEL_CONFIG_VALUE 0  // sets limits to 2g
 #define GYRO_CONFIG_VALUE 0  // sets limits to 250°/s
-#define GYRO_UNITS_TO_RADIANS 131.0*PI/180
+#define GYRO_UNITS_TO_RADIANS 131.0*PI/180.0
 #define ACCEL_UNITS_TO_MS2 (9.81 / 16384.0)
 
 //Kalman Constants
-#define minimum_speed_for_kalman_update 1 // m/s if the vehicle is not moving the gps data will be inaccurate
+#define minimum_speed_for_kalman_update 2 // m/s if the vehicle is not moving the gps data will be inaccurate
 #define max_speed_resonable 30
-#define kalman_states 4 //number of variables tracked
-#define kalman_measurements 2 //number of data used in the kalman update function
+#define kalman_states 5 //number of variables tracked
+#define kalman_measurements 4 //number of data used in the kalman update function
 
 #include <Servo.h>// This Library includes the control functions to interface with RC car Hobby components
 #include <Wire.h> // this library connects the IMU and GPS via IIC
 #include "SparkFun_I2C_GPS_Arduino_Library.h" // https://github.com/sparkfun/SparkFun_I2C_GPS_Arduino_Library
 #include "TinyGPSPlus.h"
 
+//set the course data with an array of waypoints in meters {latitudinal difference,} longitudinal difference 
+//generated with the waypoint_generator.js
+float waypoints[][2]={
+  {0,0},
+	{-6.096,11.07283464566929},
+	{-7.239000000000001,-8.202099737532809},
+	{-6.3627,-122.21128608923884},
+	{-1.6383,-84.48162729658792},
+	{-0.11430000000000001,-101.29593175853017},
+	{-6.5532,-180.85629921259843},
+	{-7.124700000000001,-203.001968503937},
+	{6.8199000000000005,-209.97375328083987},
+	{6.1341,-97.19488188976378},
+	{7.124700000000001,9.02230971128609},
+	{0,0},
+};
+int seeking=0; // the waypoint that the machine is tyring to reach
 Servo steering;  // create servo object to control steering. this is the front servo
 Servo throttle;  //create another servo object to control throttle this actually controls the esc
 // twelve servo objects can be created on most boards
@@ -37,7 +55,7 @@ I2CGPS myI2CGPS; // I2C object for communication
 TinyGPSPlus gps;//TinyGps object for interpretation
 //control variables
 int steering_angle = 90;    // variable to store the servo position
-int throttle_speed = 115;   //90 is stopped higher numbers faster. currently set very slow for testing.
+int throttle_speed = 110;   //90 is stopped higher numbers faster. currently set very slow for testing.
 uint8_t mode=0;// the status of the machine currently only records whether the machine should be driving
 //data variables 
 int16_t mpu_data [7];//stores raw data from the mpu
@@ -46,32 +64,37 @@ int16_t mpu_offsets[7] = {-822, -612, 18412, -239, -3483, -236, 302};
 
 float gps_data [4];//gps latitude longtitude speed direction
 
-// ===== HEADING + SPEED KALMAN FILTER =====
+// ===== KALMAN FILTER STATES=====
 float x[kalman_states][1]={
   {0},//heading
   {0},//gyro_bias
   {0},//speed
-  {0}//accelerometer_bias
+  {0},//longtitude
+  {0} //latitude
 };
 
 // Covariance matrix (3x3) these values are currently made up and have no basis in experamentation
 float P[kalman_states][kalman_states] = {
-  {1, 0, 0, 0},  // P00, P01, P02, P03
-  {0, 1, 0, 0},  // P10, P11, P12, P13
-  {0, 0, 5, 0},  // P20, P21, P22, P23
-  {0, 0, 0, 2}   // P30, P31, P32, P33
+  {1, 0, 0, 0, 0},  // P00, P01, P02, P03
+  {0, 1, 0, 0, 0},  // P10, P11, P12, P13
+  {0, 0, 5, 0, 0},  // P20, P21, P22, P23
+  {0 ,0, 0, 2, 0},
+  {0, 0, 0, 0, 2}
 };
 
 // Process noise
 float Q[]={
     0.05,    // gyro noise
     0.003,   // gyro bias drift
-    0.5,     // speed process noise
-    .1,   //accelerometer bias drift
+    0.003,     // speed process noise
+    0.01, //longtitudinal uncertainty
+    0.01 //latitudinal uncertainty
 };
 // Measurement noise
 float R_gps_heading = 1.0;  // GPS heading noise
 float R_gps_speed   = 0.15;  // GPS speed noise
+float R_gps_x       =0.1; //gps latitude noise
+float R_gps_y       =0.1; //gps longtitude noise
 
 unsigned long lastTime = 0; //timing the difference between gps updates
 
@@ -113,7 +136,7 @@ void setup() {
     delay(500);
   }
   Wire1.setClock(400000); // 400 kHz
-    // Build the PMTK packet for 100 Hz (1000 ms)
+    // Build the PMTK packet for 1 Hz (1000 ms)
   String config = myI2CGPS.createMTKpacket(220, ",1000"); 
   // Send it
   myI2CGPS.sendMTKpacket(config);
@@ -148,20 +171,26 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
       Serial1.println(error);
       return;
     case 4://GPS update
-      Serial1.println("gps update:");
-              for(int i=0; i<3;i++){
+      Serial1.println("gps update:"); 
+      Serial1.print(gps.satellites.value());
+      for(int i=0; i<3;i++){
           Serial1.print(gps_data[i]);
           Serial1.print(", ");
         }
+        Serial.println("|");
     return;
     case 5://Kalman output
+      Serial1.println("kalman Update");
       Serial1.print(gps.satellites.value());
       Serial1.print(", ");
-      Serial1.print(gps_data[2],6);
+      Serial1.print(x[3][0]);
       Serial1.print(", ");
-      Serial1.print(x[2][0], 6);
+      Serial1.print(x[4][0]);
+      Serial1.print(", ");
+      Serial1.print(x[2][0]);
       Serial1.print(", ");
       Serial1.println(x[0][0]);
+      bluetooth(4,0);
     return;
     case 6://kalman error checking
       for(int i=0;i<kalman_states;i++)//valid covariance
@@ -195,10 +224,30 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
 }
 
 void drive(){//this function controls the main driving opperations which must be done repeatedly.
+  float dy = waypoints[seeking][0] - x[4][0]; // latitude
+  float dx = waypoints[seeking][1] - x[3][0]; // longitude
+  while((dy*dy+dx*dx)<max_squared_distance_for_waypoint){
+    seeking++;
+    dy = waypoints[seeking][0] - x[4][0];
+    dx = waypoints[seeking][1] - x[3][0];
+  }
+  float head=atan2(dx,dy);
+  float error = head - x[0][0];
+
+  // wrap error
+  if(error > PI) error -= 2*PI;
+  if(error < -PI) error += 2*PI;
+
+  steering_angle = steering_center + degrees(error);
+
+  steering_angle = constrain(steering_angle,
+                           min_steering_angle,
+                           max_steering_angle);
   steering.write(steering_angle);//set the steering angle
-  if(digitalRead(D3)){//last bit is for should you drive?
+  if(digitalRead(D3)){
     throttle.write(throttle_speed);//set the speed
   }else{
+    
     throttle.write(90);
   }
 }
@@ -233,8 +282,8 @@ bool gps_update(){
      !gps.course.isUpdated()) return false;
   //if data is invalid do not use
   if(gps.location.isValid()){
-    gps_data[0]=(gps.location.lat()-Start_latitude)*degree_to_meter;
-    gps_data[1]=(gps.location.lng()-Start_longtitude)*degree_to_meter*cosine_latitude;  
+    gps_data[0]=(gps.location.lat()-start_latitude)*degree_to_meter;
+    gps_data[1]=(gps.location.lng()-start_longtitude)*degree_to_meter*cosine_latitude;  
   }
   if(gps.speed.isValid()) gps_data[2]=gps.speed.mps();
   if(gps.course.isValid())  gps_data[3]=radians(gps.course.deg());
@@ -261,7 +310,7 @@ bool mat_inverse(float A[][kalman_measurements], float A_inv[][kalman_measuremen
     {
         float pivot = aug[i][i];
 
-        if (fabs(pivot) < 1e-8){
+        if (fabs(pivot) < 1e-6){
             bluetooth(7,0);
             return false; // singular matrix
             
@@ -310,10 +359,10 @@ void kalman_predict( float dt)
 {
   // increment the heading estimate by the z axis portion of the gyroscope data
   x[0][0] += ((mpu_data[5])/GYRO_UNITS_TO_RADIANS-x[1][0])*dt;
-  // ---- Forward acceleration ----
-  float accel_forward = mpu_data[0] * ACCEL_UNITS_TO_MS2;//
-  // Predict speed
-  x[2][0] += (accel_forward-x[3][0]) * dt;
+  //speed estimate now constant velocity because of high accelerometer noise
+  //predict location
+  x[3][0] += x[2][0]*cos(x[0][0])*dt;
+  x[4][0] += x[2][0]*sin(x[0][0])*dt;
   boundaries();
   // ---- Covariance prediction ----
   //jacobian F (F_transpose)
@@ -326,15 +375,17 @@ void kalman_predict( float dt)
   //nonlinear portion
   F[0][1] = -dt;//heading relates to gyro bias
       F_transpose[1][0]=F[0][1];
-  F[2][3] = -dt;//speed relates to accel bias
-      F_transpose[3][2]=F[2][3];
+  F[3][2] =cos(x[0][0])*dt;//speed relates to location
+      F_transpose[2][3]=F[3][2];
+  F[4][2] =sin(x[0][0])*dt;//speed relates to location
+      F_transpose[2][4]=F[4][2];
   float FP[kalman_states][kalman_states];
   //P=FPF_transpose
   matrixMultiply(kalman_states,kalman_states,kalman_states,(float*)F,(float*)P,(float*)FP);
   matrixMultiply(kalman_states,kalman_states,kalman_states,(float*)FP,(float*)F_transpose,(float*)P);
   
   for(int i=0;i<kalman_states;i++){
-    P[i][i]+=Q[i];// add procces noise
+    P[i][i]+=Q[i]*dt;// add procces noise
   }
 }
 
@@ -342,27 +393,33 @@ void kalman_update() {
   // ---- Measurement vector ----
   float z[kalman_measurements][1] = { 
     {gps_data[3]}, 
-    {gps_data[2]}
+    {gps_data[2]},
+    {gps_data[0]},
+    {gps_data[1]}
   };
 
-  // ---- Measurement matrix H (2x4) ----
+  // ---- Measurement matrix H ----
   float H[kalman_measurements][kalman_states] = {
-    {1,0,0,0},
-    {0,0,1,0}
+    {1,0,0,0,0},
+    {0,0,1,0,0},
+    {0,0,0,1,0},
+    {0,0,0,0,1},
   };
   //because this is used so often it was thought to store it in transposed form
   float H_transpose[kalman_states][kalman_measurements] = {
-    {1,0},
-    {0,0},
-    {0,1},
-    {0,0}
+    {1,0,0,0},
+    {0,0,0,0},
+    {0,1,0,0},
+    {0,0,1,0},
+    {0,0,0,1}
   };
   // ---- Measurement noise ----
   float R[kalman_measurements][kalman_measurements] = {
-    {R_gps_heading, 0},
-    {0, R_gps_speed}
+    {R_gps_heading, 0, 0, 0},
+    {0, R_gps_speed, 0, 0},
+    {0, 0, R_gps_x, 0},
+    {0, 0, 0, R_gps_y}
   };
-
   // ---- Innovation y = z - Hx ----
   float y[kalman_measurements];
   float Hx[kalman_measurements][1];
@@ -454,13 +511,19 @@ void boundaries(){
   if(x[2][0]<0) x[2][0]=0;
   if(x[2][0]>max_speed_resonable) x[2][0]=max_speed_resonable;
 }
+void update_start(){
+  start_latitude *=0.99;
+  start_latitude  +=(gps.location,lat()*.01);
+  start_longtitude*=0.99;
+  start_longtitude+=(gps.location.lon()*.01);
+  x[1][0]*=.99;
+  x[1][0]+=mpu_data[5]*.01;
+}
 void loop() {
   mode &=0b11111110;//set bit flags low
   mode |= digitalRead(D3);
-  bluetooth(0,mode);
   drive();
   mpu();
-
   // ---- TIME STEP ----
   unsigned long now = micros();
   float dt = (now - lastTime) / 1000000.0;
@@ -472,13 +535,18 @@ void loop() {
   kalman_predict(dt);
   // ---- GPS UPDATE ----
   if(gps_update()) {// if the gps updated and the car is moving
-    if(gps_data[2] > minimum_speed_for_kalman_update){
+    if((mode&1)==0){//if stopped use data to reset the function
+    update_start();
+    bluetooth(0,mode);
+    bluetooth(4,0);
+    return;
+  } else if(gps_data[2] > minimum_speed_for_kalman_update){
     kalman_update();
-    bluetooth(6,0);
+    bluetooth(5,0);
     }
   }
   if(gps.satellites.value() < 4){
     bluetooth(3,gps.satellites.value());
   }
-  bluetooth(5,0);
+  bluetooth(6,0);
 }
