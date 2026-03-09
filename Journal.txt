@@ -40,3 +40,8 @@ The next thing once the system is running is to add the speedometers, one on eac
 The modified gearbox seems to work alright when it is well oiled. the oil was not used before and the addition of it seems to have greatly improved efficiency. it seems that this vehicle works well enough that it could be used for competition. but as it drives poorly and the speedometers are still missing a serious redesign of the gear system is proposed for the spring break, which begins tommorow.
 waypoint_generator.js is created to enable one to graphically set the course of the machine through the area with barrels displayed for context. currently the plan for the ramp is to tell the computer that it is not there and hope the machine is smart enough to figure it out but this must be tested first.
 the accelerometer is found to be unreliable for dirrect speed because slight tilt can make it confuse gravity for motion and get way off. for now the Q and R values will be increased but it is hoped to control for this eventually.
+
+3/9/2026:
+Correction the gearbox does not work it makes the wheels spin but when the load of the car is placed upon it the gears start slipping. therefore the next eddition of the gearbox will have more stable gear mounts that hold the gears together.
+
+because errors in the initial conditions make the kalman filter unstable an update start function is created to get the correct data. because of the high error the accelerometer will no longer be used for speed. the speed estimate provided by the gps is much more stable. it is hoped that with the addition of the spedometers the speed estimates will be known even better.
