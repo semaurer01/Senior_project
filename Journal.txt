@@ -45,3 +45,7 @@ the accelerometer is found to be unreliable for dirrect speed because slight til
 Correction the gearbox does not work it makes the wheels spin but when the load of the car is placed upon it the gears start slipping. therefore the next eddition of the gearbox will have more stable gear mounts that hold the gears together.
 
 because errors in the initial conditions make the kalman filter unstable an update start function is created to get the correct data. because of the high error the accelerometer will no longer be used for speed. the speed estimate provided by the gps is much more stable. it is hoped that with the addition of the spedometers the speed estimates will be known even better.
+
+3/26/2026:
+The gearbox has been completely redesigned to allow for much greater stability of the gears forcing them to stay in alignment whereas before they bent out of place. This widening also allows for the speedometer and interuptors to be placed hopefully allowing the addition of the speedometer system.
+With only 3 weeks remaining before competition it is decided that the system is way behind schedule and I now only hope to compete and not to win.
