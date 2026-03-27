@@ -33,8 +33,17 @@ Servo GND          |GND
 Servo 5v           |5v
 Servo input        |Arduino D4
 
+Speedometers
+speedometer1 Vcc   |5v
+speedometer1 GND   |GND
+speedometer1 out   |Arduino D2
+
+speedometer2 Vcc   |5v
+speedometer2 GND   |GND
+speedometer2 out   |Arduino D3
+
 Input Switches
-S1-                |Arduino D3
+S1-                |Arduino D5
 S1+                |5v
 
 Resistors
@@ -42,5 +51,5 @@ R1+                |Arduino D0
 R1-                |Node 1
 R2+                |NODE 1
 R2-                |GND
-R3+                |Arduino D3
+R3+                |Arduino D5
 R3-                |GND
