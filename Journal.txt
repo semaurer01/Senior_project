@@ -49,3 +49,11 @@ because errors in the initial conditions make the kalman filter unstable an upda
 3/26/2026:
 The gearbox has been completely redesigned to allow for much greater stability of the gears forcing them to stay in alignment whereas before they bent out of place. This widening also allows for the speedometer and interuptors to be placed hopefully allowing the addition of the speedometer system.
 With only 3 weeks remaining before competition it is decided that the system is way behind schedule and I now only hope to compete and not to win.
+
+3/27/2026:
+The new gearbox seems to work but gears wear out frequently so it is hoped to try various materials to fix this issue.
+So far it has been concluded:
+PLA is too soft and wears out quickly
+ABS somewhat works but wears out quickly
+Now PETG and Nylon are to be tried. but it is clear that these are harder to print well.
+also it is realized that the holes in the gearbox for the interuptor are placed wrong so better ones are cut in by hand. these will be put into CAD later if time allows.
