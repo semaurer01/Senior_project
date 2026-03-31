@@ -57,3 +57,6 @@ PLA is too soft and wears out quickly
 ABS somewhat works but wears out quickly
 Now PETG and Nylon are to be tried. but it is clear that these are harder to print well.
 also it is realized that the holes in the gearbox for the interuptor are placed wrong so better ones are cut in by hand. these will be put into CAD later if time allows.
+
+3/31/2026:
+The software for the double speedometer test works but the interuptors themselves are to small so they are printed larger. they are currently held onto the shaft with hot glue but it is hoped that a more heat resistant method can be found later.
