@@ -60,3 +60,7 @@ also it is realized that the holes in the gearbox for the interuptor are placed 
 
 3/31/2026:
 The software for the double speedometer test works but the interuptors themselves are to small so they are printed larger. they are currently held onto the shaft with hot glue but it is hoped that a more heat resistant method can be found later.
+
+4/8/2026:
+After much expiramentation it was detirmined that the PLA of the Interuptors does not allow block the infrared of the detector therefore the interuptors will be painted with black acrylic.
+when the PETG gears were tested the gear arms broke so they have been glued back together with superglue. as all the school printers are currently broken if this does not work I am in trouble.
