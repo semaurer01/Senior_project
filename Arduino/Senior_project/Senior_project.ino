@@ -3,13 +3,18 @@
 #define max_steering_angle 110 //maximum angle in degrees
 #define steering_center 80 //the angle offset that is strait.
 #define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
+//speedometer constants
+
+//meters per speedometer pulse at 2 pulses this is π*r where r is the radius of the wheel
+#define distancePerPulse (PI * 0.03)
+#define speedometer_confidence 0.1//how much to change speed estimate based on speedometer values each iteration of the predict phase
 //GPS
 #define start_location_confidence 0.99 //how sure am I that this is the current location (changes regularly)
 float start_latitude   = 41.056297;//estimate of initial location
 float start_longtitude = -85.107605;//estimate of initial location
 #define earth_radius_meters 6361632 
 #define degree_to_meter earth_radius_meters*PI/180
-#define cosine_latitude 0.7541010112304150//doesn't need to change dynamically because machine will always be near start.
+float cosine_latitude = cos(radians(start_latitude));//doesn't need to change dynamically because machine will always be near start.
 // MPU6050 constants
 #define MPU6050_ADDR 0x69  // MPU6050 I2C address
 #define PWR_MGMT_1   0x6B  // Power management register
@@ -26,7 +31,7 @@ float start_longtitude = -85.107605;//estimate of initial location
 #define max_speed_resonable 30
 #define kalman_states 5 //number of variables tracked
 #define kalman_measurements 4 //number of data used in the kalman update function
-
+//libraries
 #include <Servo.h>// This Library includes the control functions to interface with RC car Hobby components
 #include <Wire.h> // this library connects the IMU and GPS via IIC
 #include "SparkFun_I2C_GPS_Arduino_Library.h" // https://github.com/sparkfun/SparkFun_I2C_GPS_Arduino_Library
@@ -48,6 +53,11 @@ float waypoints[][2]={
 	{7.124700000000001,9.02230971128609},
 	{0,0},
 };
+//navigation variables 
+volatile unsigned long lastPulseLeft = 0;
+volatile unsigned long lastPulseRight = 0;
+volatile float speedLeft = 0;
+volatile float speedRight = 0;
 int seeking=0; // the waypoint that the machine is tyring to reach
 Servo steering;  // create servo object to control steering. this is the front servo
 Servo throttle;  //create another servo object to control throttle this actually controls the esc
@@ -74,9 +84,9 @@ float x[kalman_states][1]={
 
 // Covariance matrix (3x3) these values are currently made up and have no basis in experamentation
 float P[kalman_states][kalman_states] = {
-  {1, 0, 0, 0, 0},  // P00, P01, P02, P03
-  {0, 1, 0, 0, 0},  // P10, P11, P12, P13
-  {0, 0, 5, 0, 0},  // P20, P21, P22, P23
+  {1, 0, 0, 0, 0},
+  {0, 1, 0, 0, 0},
+  {0, 0, 5, 0, 0},
   {0 ,0, 0, 2, 0},
   {0, 0, 0, 0, 2}
 };
@@ -141,8 +151,13 @@ void setup() {
   myI2CGPS.sendMTKpacket(config);
 
   //input settings
-  pinMode(D5,INPUT);
-
+  pinMode(D5,INPUT);//switch 1
+  
+  pinMode(D2, INPUT); // left wheel
+  pinMode(D3, INPUT); // right wheel
+  //placing the left wheel on 2 and the right one on 3 prevents these wires from crossing
+  attachInterrupt(digitalPinToInterrupt(D2), leftWheelISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(D3), rightWheelISR, RISING);
   //last thing before loop start timer
   while(millis()-throttle_start<1000);
   lastTime =micros();
@@ -295,6 +310,28 @@ bool gps_update(){
   return true;
 }
 
+//ISRs for speedometer are separate in order to save time on execution{
+  // ISR for left wheel
+  void leftWheelISR() {
+    unsigned long now = micros();
+    if (lastPulseLeft != 0) {
+      unsigned long dt = now - lastPulseLeft; // microseconds between pulses
+      speedLeft = distancePerPulse / (dt / 1e6); // m/s
+    }
+    lastPulseLeft = now;
+  }
+
+  // ISR for right wheel
+  void rightWheelISR() {
+    unsigned long now = micros();
+    if (lastPulseRight != 0) {
+      unsigned long dt = now - lastPulseRight;
+      speedRight = distancePerPulse / (dt / 1e6); // m/s
+    }
+    lastPulseRight = now;
+  }
+//}
+
 bool mat_inverse(float A[][kalman_measurements], float A_inv[][kalman_measurements], int m)
 {
     // Create augmented matrix [A | I]
@@ -358,11 +395,11 @@ void matrixMultiply(int rowsA, int colsA, int colsB,
         }
     }
 }
-void kalman_predict( float dt)
-{
+void kalman_predict( float dt){
   // increment the heading estimate by the z axis portion of the gyroscope data
   x[0][0] += ((mpu_data[5])/GYRO_UNITS_TO_RADIANS-x[1][0])*dt;
   //speed estimate now constant velocity because of high accelerometer noise
+  x[2][0] =x[2][0]*(1-speedometer_confidence)+((speedLeft + speedRight)/2)*speedometer_confidence;
   //predict location
   x[3][0] += x[2][0]*cos(x[0][0])*dt;
   x[4][0] += x[2][0]*sin(x[0][0])*dt;
@@ -391,7 +428,6 @@ void kalman_predict( float dt)
     P[i][i]+=Q[i]*dt;// add procces noise
   }
 }
-
 void kalman_update() {
   // ---- Measurement vector ----
   float z[kalman_measurements][1] = { 
@@ -514,13 +550,14 @@ void boundaries(){
   if(x[2][0]<0) x[2][0]=0;
   if(x[2][0]>max_speed_resonable) x[2][0]=max_speed_resonable;
 }
-void update_start(){
+void update_start(){//for when the system starts and doesn't know its own location and bias to be run every time the vehicle is stopped.
   start_latitude *=start_location_confidence;
   start_latitude  +=(gps.location.lat()*(1-start_location_confidence));
   start_longtitude*=start_location_confidence;
   start_longtitude+=(gps.location.lng()*(1-start_location_confidence));
+  cosine_latitude = cos(radians(start_latitude));
   x[1][0]*=.9;
-  mpu_offsets[5]+=mpu_data[5]*.1;
+  x[1][0] += mpu_data[5] * 0.1; // gyro bias estimate
 }
 void loop() {
   mode &=0b11111110;//set bit flags low
