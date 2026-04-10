@@ -64,3 +64,6 @@ The software for the double speedometer test works but the interuptors themselve
 4/8/2026:
 After much expiramentation it was detirmined that the PLA of the Interuptors does not allow block the infrared of the detector therefore the interuptors will be painted with black acrylic.
 when the PETG gears were tested the gear arms broke so they have been glued back together with superglue. as all the school printers are currently broken if this does not work I am in trouble.
+
+4/10/2026:
+the interuptors work with black acrylic paint on them therefore the double speedometer can be properly tested now the only mechanical issue is the gears. which are in hindsight seen to be the hardest part anyway. because of the high friction it is attempted to manually run the gears for and extended time to observe their wear. and observed that they do indeed rub together to much calling into question their design, but it is too late to redesign them before competition.
