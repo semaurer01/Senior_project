@@ -67,3 +67,6 @@ when the PETG gears were tested the gear arms broke so they have been glued back
 
 4/10/2026:
 the interuptors work with black acrylic paint on them therefore the double speedometer can be properly tested now the only mechanical issue is the gears. which are in hindsight seen to be the hardest part anyway. because of the high friction it is attempted to manually run the gears for and extended time to observe their wear. and observed that they do indeed rub together to much calling into question their design, but it is too late to redesign them before competition.
+
+4/14/2026:
+The gears are tightened together with super glue this reduces stray movement making the machine far more efficient. now it spins fast enough while oiled under no load to make the little screws that hold the gears come loose. This is beleived to be related to using oil much thinner than should be used.
