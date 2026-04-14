@@ -70,3 +70,5 @@ the interuptors work with black acrylic paint on them therefore the double speed
 
 4/14/2026:
 The gears are tightened together with super glue this reduces stray movement making the machine far more efficient. now it spins fast enough while oiled under no load to make the little screws that hold the gears come loose. This is beleived to be related to using oil much thinner than should be used.
+
+With thicker oil the machine sped up still further and vibrated harder making the grub screws come loose again. They were tightened and glued down then the gears spun even faster and the motor gear wore out quickly. it will be reprinted with PETG at 100% infill.
