@@ -75,3 +75,11 @@ With thicker oil the machine sped up still further and vibrated harder making th
 
 4/15/2026:
 It has been verified that the issue is that the gearbox is too loose so extra washers have been added and the screws have been tightened now the gears seems to work.
+
+4/16/2026:
+The course being observed not to match the original, new waypoint setup was calculated manually. 
+
+The motor driving function was redesigned to use dynamic throttling to save the gears, but the gears are still wearing very quickly. this is in part attributed to the material. It is hoped to quickly manufacture stronger gears on a friends printer that was brought to competition. if this cannot be done successful driving will not be achieved. On a simililar note it has been realized that Amazon sells the gears I am trying to manufacture but they will not arrive on time.
+with the gears working somewhat their was a half test accomplished which found a bug in the direction finding software this demonstrates the need for testing, in a way that could not be done without help.
+
+The original lid design failed if it rains tommorow I will be makeshifting with a tupperware container. This was considered before and the tupperware that will work was brought on the trip.
