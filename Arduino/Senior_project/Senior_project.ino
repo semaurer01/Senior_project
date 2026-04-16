@@ -3,8 +3,8 @@
 #define max_steering_angle 110 //maximum angle in degrees
 #define steering_center 80 //the angle offset that is strait.
 #define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
-#define throttle_max 110
-#define throttle_stable 107
+#define throttle_max 180
+#define throttle_stable 180
 bool throttle_started = 0;
 byte throttle_delay_counter=0;
 //speedometer constants
@@ -71,6 +71,7 @@ float waypoints[][2]={
 	{6.1341,-97.19488188976378},
 	{7.124700000000001,9.02230971128609},
 	{0,0},
+};
 //navigation variables 
 volatile unsigned long lastPulseLeft = 0;
 volatile unsigned long lastPulseRight = 0;
@@ -213,6 +214,7 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
           Serial1.print(gps_data[i]);
           Serial1.print(", ");
         }
+        Serial.println();
     return;
     case 5://Kalman output
       Serial1.println("kalman Update");
@@ -280,15 +282,14 @@ void drive(){//this function controls the main driving opperations which must be
                            max_steering_angle);
   steering.write(steering_angle);//set the steering angle
   if(digitalRead(D5)){
-    if(throttle_delay_counter<5){
-      throttle_delay_counter++;
-      return;
-    }
-    throttle_delay_counter=0;
+    throttle_speed=throttle_max;
     throttle.write(throttle_speed);//set the speed
+    
+    if(throttle_speed>=throttle_max){
+      throttle_started=1;
+    }
     if(throttle_speed<throttle_max&& !throttle_started ){
       throttle_speed++;
-      throttle_started=1;
     }else if( throttle_speed>throttle_stable){
       throttle_speed--;
     }
@@ -427,7 +428,7 @@ void matrixMultiply(int rowsA, int colsA, int colsB,
 }
 void kalman_predict( float dt){
   // increment the heading estimate by the z axis portion of the gyroscope data
-  x[0][0] += ((mpu_data[5])/GYRO_UNITS_TO_RADIANS-x[1][0])*dt;
+  x[0][0] += ((mpu_data[5])/GYRO_UNITS_TO_RADIANS-x[1][0])*dt/1000;
   //speed estimate now constant velocity because of high accelerometer noise
   x[2][0] =x[2][0]*(1-speedometer_confidence)+((speedLeft + speedRight)/2)*speedometer_confidence;
   //predict location
@@ -574,8 +575,8 @@ void kalman_update() {
 }
 void boundaries(){
   // Wrap heading
-  if(x[0][0] > PI) x[0][0] -= 2*PI;
-  if(x[0][0] < -PI) x[0][0] +=2*PI;
+  while(x[0][0] > PI) x[0][0] -= 2*PI;
+  while(x[0][0] < -PI) x[0][0] +=2*PI;
   //speed boundaries
   if(x[2][0]<0) x[2][0]=0;
   if(x[2][0]>max_speed_resonable) x[2][0]=max_speed_resonable;
