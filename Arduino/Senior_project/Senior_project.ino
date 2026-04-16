@@ -3,8 +3,8 @@
 #define max_steering_angle 110 //maximum angle in degrees
 #define steering_center 80 //the angle offset that is strait.
 #define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
-#define throttle_max 180
-#define throttle_stable 180
+#define throttle_max 125
+#define throttle_stable 112
 bool throttle_started = 0;
 byte throttle_delay_counter=0;
 //speedometer constants
@@ -57,20 +57,28 @@ float cosine_latitude = cos(radians(start_latitude));//doesn't need to change dy
 	{7.124700000000001,9.02230971128609},
 	{0,0},
 };*/
-//adapted because orientation
+//adapted because orientation was wrong manually calculated values
 float waypoints[][2]={
   {0,0},
-	{-6.096,11.07283464566929},
-	{-7.239000000000001,-8.202099737532809},
-	{-6.3627,-122.21128608923884},
-	{-1.6383,-84.48162729658792},
-	{-0.11430000000000001,-101.29593175853017},
-	{-6.5532,-180.85629921259843},
-	{-7.124700000000001,-203.001968503937},
-	{6.8199000000000005,-209.97375328083987},
-	{6.1341,-97.19488188976378},
-	{7.124700000000001,9.02230971128609},
-	{0,0},
+	{-2,-7},
+	{0,-9},
+	{10,-7},
+	{11.5,-6.5},
+	{10.2,-3.5},
+	{7,-2.5},
+  {10,2},
+  {20.2,-9.5},
+  {23,-8},
+  {20.2,-3},
+  {20.2,3},
+  {23,8},
+  {20.2,9.5},
+  {15,-7},
+  {5,-7},
+  {0,-9},
+  {-1,-6}
+  {0,0},
+  {0,5}
 };
 //navigation variables 
 volatile unsigned long lastPulseLeft = 0;
@@ -428,7 +436,7 @@ void matrixMultiply(int rowsA, int colsA, int colsB,
 }
 void kalman_predict( float dt){
   // increment the heading estimate by the z axis portion of the gyroscope data
-  x[0][0] += ((mpu_data[5])/GYRO_UNITS_TO_RADIANS-x[1][0])*dt/1000;
+  x[0][0] += ((mpu_data[5])*GYRO_UNITS_TO_RADIANS-x[1][0])*dt;
   //speed estimate now constant velocity because of high accelerometer noise
   x[2][0] =x[2][0]*(1-speedometer_confidence)+((speedLeft + speedRight)/2)*speedometer_confidence;
   //predict location
