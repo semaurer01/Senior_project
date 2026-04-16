@@ -3,6 +3,7 @@
 #define max_steering_angle 110 //maximum angle in degrees
 #define steering_center 80 //the angle offset that is strait.
 #define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
+#define max_throttle 110
 //speedometer constants
 
 //meters per speedometer pulse at 2 pulses this is π*r where r is the radius of the wheel
@@ -11,9 +12,9 @@
 //GPS
 #define start_location_confidence 0.99 //how sure am I that this is the current location (changes regularly)
 float start_latitude   = 41.056297;//estimate of initial location
-float start_longtitude = -85.107605;//estimate of initial location
+float start_longitude = -85.107605;//estimate of initial location
 #define earth_radius_meters 6361632 
-#define degree_to_meter earth_radius_meters*PI/180
+#define degree_to_meter (earth_radius_meters*PI/180)
 float cosine_latitude = cos(radians(start_latitude));//doesn't need to change dynamically because machine will always be near start.
 // MPU6050 constants
 #define MPU6050_ADDR 0x69  // MPU6050 I2C address
@@ -23,7 +24,7 @@ float cosine_latitude = cos(radians(start_latitude));//doesn't need to change dy
 #define GYRO_CONFIG 0x1B   // Gyroscope configuration register
 #define ACCEL_CONFIG_VALUE 0  // sets limits to 2g
 #define GYRO_CONFIG_VALUE 0  // sets limits to 250°/s
-#define GYRO_UNITS_TO_RADIANS 131.0*PI/180.0
+#define GYRO_UNITS_TO_RADIANS (PI/(180.0f*131.0f))
 #define ACCEL_UNITS_TO_MS2 (9.81 / 16384.0)
 
 //Kalman Constants
@@ -66,19 +67,19 @@ I2CGPS myI2CGPS; // I2C object for communication
 TinyGPSPlus gps;//TinyGps object for interpretation
 //control variables
 int steering_angle = 90;    // variable to store the servo position
-int throttle_speed = 110;   //90 is stopped higher numbers faster. currently set very slow for testing.
+int throttle_speed = 90;   //90 is stopped higher numbers faster. currently set very slow for testing.
 uint8_t mode=0;// the status of the machine currently only records whether the machine should be driving
 //data variables 
 int16_t mpu_data [7];//stores raw data from the mpu
 
-float gps_data [4];//gps latitude longtitude speed direction
+float gps_data [4];//gps latitude longitude speed direction
 
 // ===== KALMAN FILTER STATES=====
 float x[kalman_states][1]={
   {0},//heading
   {0},//gyro_bias
   {0},//speed
-  {0},//longtitude
+  {0},//longitude
   {0} //latitude
 };
 
@@ -92,7 +93,7 @@ float P[kalman_states][kalman_states] = {
 };
 
 // Process noise
-float Q[]={
+static float Q[]={
     0.05,    // gyro noise
     0.003,   // gyro bias drift
     0.003,     // speed process noise
@@ -103,7 +104,7 @@ float Q[]={
 float R_gps_heading = 1.0;  // GPS heading noise
 float R_gps_speed   = 0.15;  // GPS speed noise
 float R_gps_x       =0.1; //gps latitude noise
-float R_gps_y       =0.1; //gps longtitude noise
+float R_gps_y       =0.1; //gps longitude noise
 
 unsigned long lastTime = 0; //timing the difference between gps updates
 
@@ -169,7 +170,7 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
         Serial1.println(error);
         Serial1.print(start_latitude,6);
         Serial1.print(", ");
-        Serial1.println(start_longtitude,6);
+        Serial1.println(start_longitude,6);
         return;
     case 1://debug MPU
         Serial1.println("mpu update:");
@@ -263,8 +264,10 @@ void drive(){//this function controls the main driving opperations which must be
   steering.write(steering_angle);//set the steering angle
   if(digitalRead(D5)){
     throttle.write(throttle_speed);//set the speed
+    if(throttle_speed<throttle_max)
+      throttle_speed++;
   }else{
-    
+    throttle_speed=90;
     throttle.write(90);
   }
 }
@@ -301,7 +304,7 @@ bool gps_update(){
   //if data is invalid do not use
   if(gps.location.isValid()){
     gps_data[0]=(gps.location.lat()-start_latitude)*degree_to_meter;
-    gps_data[1]=(gps.location.lng()-start_longtitude)*degree_to_meter*cosine_latitude;  
+    gps_data[1]=(gps.location.lng()-start_longitude)*degree_to_meter*cosine_latitude;  
   }
   if(gps.speed.isValid()) gps_data[2]=gps.speed.mps();
   if(gps.course.isValid())  gps_data[3]=radians(gps.course.deg());
@@ -553,15 +556,14 @@ void boundaries(){
 void update_start(){//for when the system starts and doesn't know its own location and bias to be run every time the vehicle is stopped.
   start_latitude *=start_location_confidence;
   start_latitude  +=(gps.location.lat()*(1-start_location_confidence));
-  start_longtitude*=start_location_confidence;
-  start_longtitude+=(gps.location.lng()*(1-start_location_confidence));
+  start_longitude*=start_location_confidence;
+  start_longitude+=(gps.location.lng()*(1-start_location_confidence));
   cosine_latitude = cos(radians(start_latitude));
   x[1][0]*=.9;
   x[1][0] += mpu_data[5] * 0.1; // gyro bias estimate
 }
 void loop() {
-  mode &=0b11111110;//set bit flags low
-  mode |= digitalRead(D5);
+  mode = (mode & 0xFE) | (digitalRead(D5) & 0x01);
   drive();
   mpu();
   // ---- TIME STEP ----
