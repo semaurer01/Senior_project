@@ -3,7 +3,10 @@
 #define max_steering_angle 110 //maximum angle in degrees
 #define steering_center 80 //the angle offset that is strait.
 #define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
-#define max_throttle 110
+#define throttle_max 110
+#define throttle_stable 107
+bool throttle_started = 0;
+byte throttle_delay_counter=0;
 //speedometer constants
 
 //meters per speedometer pulse at 2 pulses this is π*r where r is the radius of the wheel
@@ -11,8 +14,8 @@
 #define speedometer_confidence 0.1//how much to change speed estimate based on speedometer values each iteration of the predict phase
 //GPS
 #define start_location_confidence 0.99 //how sure am I that this is the current location (changes regularly)
-float start_latitude   = 41.056297;//estimate of initial location
-float start_longitude = -85.107605;//estimate of initial location
+float start_latitude   = 40.604637;//estimate of initial location
+float start_longitude = -83.124848;//estimate of initial location
 #define earth_radius_meters 6361632 
 #define degree_to_meter (earth_radius_meters*PI/180)
 float cosine_latitude = cos(radians(start_latitude));//doesn't need to change dynamically because machine will always be near start.
@@ -40,6 +43,21 @@ float cosine_latitude = cos(radians(start_latitude));//doesn't need to change dy
 
 //set the course data with an array of waypoints in meters {latitudinal difference,} longitudinal difference 
 //generated with the waypoint_generator.js
+/*original float waypoints[][2]={
+  {0,0},
+	{-6.096,11.07283464566929},
+	{-7.239000000000001,-8.202099737532809},
+	{-6.3627,-122.21128608923884},
+	{-1.6383,-84.48162729658792},
+	{-0.11430000000000001,-101.29593175853017},
+	{-6.5532,-180.85629921259843},
+	{-7.124700000000001,-203.001968503937},
+	{6.8199000000000005,-209.97375328083987},
+	{6.1341,-97.19488188976378},
+	{7.124700000000001,9.02230971128609},
+	{0,0},
+};*/
+//adapted because orientation
 float waypoints[][2]={
   {0,0},
 	{-6.096,11.07283464566929},
@@ -53,7 +71,6 @@ float waypoints[][2]={
 	{6.1341,-97.19488188976378},
 	{7.124700000000001,9.02230971128609},
 	{0,0},
-};
 //navigation variables 
 volatile unsigned long lastPulseLeft = 0;
 volatile unsigned long lastPulseRight = 0;
@@ -263,10 +280,20 @@ void drive(){//this function controls the main driving opperations which must be
                            max_steering_angle);
   steering.write(steering_angle);//set the steering angle
   if(digitalRead(D5)){
+    if(throttle_delay_counter<5){
+      throttle_delay_counter++;
+      return;
+    }
+    throttle_delay_counter=0;
     throttle.write(throttle_speed);//set the speed
-    if(throttle_speed<throttle_max)
+    if(throttle_speed<throttle_max&& !throttle_started ){
       throttle_speed++;
+      throttle_started=1;
+    }else if( throttle_speed>throttle_stable){
+      throttle_speed--;
+    }
   }else{
+    throttle_started=0;
     throttle_speed=90;
     throttle.write(90);
   }
