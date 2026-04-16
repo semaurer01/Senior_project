@@ -6,7 +6,6 @@
 #define throttle_max 125
 #define throttle_stable 112
 bool throttle_started = 0;
-byte throttle_delay_counter=0;
 //speedometer constants
 
 //meters per speedometer pulse at 2 pulses this is π*r where r is the radius of the wheel
@@ -76,7 +75,7 @@ float waypoints[][2]={
   {15,-7},
   {5,-7},
   {0,-9},
-  {-1,-6}
+  {-1,-6},
   {0,0},
   {0,5}
 };
