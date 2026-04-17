@@ -3,8 +3,9 @@
 #define max_steering_angle 110                         //maximum angle in degrees
 #define steering_center 80                             //the angle offset that is strait.
 #define max_squared_distance_for_waypoint (1.2 * 1.2)  //meters from target before target switches
-#define throttle_max 220
-#define throttle_stable 210
+#define throttle_scalar 40
+#define throttle_max 104*throttle_scalar
+#define throttle_stable 97*throttle_scalar
 bool throttle_started = 0;
 //speedometer constants
 
@@ -92,7 +93,7 @@ I2CGPS myI2CGPS;  // I2C object for communication
 TinyGPSPlus gps;  //TinyGps object for interpretation
 //control variables
 int steering_angle = 90;  // variable to store the servo position
-int throttle_speed = 180;  //90 is stopped higher numbers faster. currently set very slow for testing.
+int throttle_speed = 90*throttle_scalar;  //90 is stopped higher numbers faster. currently set very slow for testing.
 uint8_t mode = 0;         // the status of the machine currently only records whether the machine should be driving
 //data variables
 int16_t mpu_data[7];  //stores raw data from the mpu
@@ -267,9 +268,7 @@ void bluetooth(int status, int error) {  //debugging data this will do nothing d
       return;
     case 8:
       Serial1.print("driving at speed");
-      Serial1.print(throttle_speed - 180);
-      Serial1.print(".");
-      Serial1.println(throttle_delay_state);
+      Serial1.println(throttle_speed - 90*throttle_scalar);
       return;
   }  //end switch
 
@@ -278,9 +277,8 @@ void bluetooth(int status, int error) {  //debugging data this will do nothing d
 void throttleSet() {
   if (!digitalRead(D5)) {
     bluetooth(0, -1);
-    throttle_speed = 180;
+    throttle_speed = 90*throttle_scalar;
     throttle_started = 0;
-    throttle_delay_state = 0;
     return;
   }
   if (throttle_started) {
@@ -321,8 +319,8 @@ void drive() {                                 //this function controls the main
                              max_steering_angle);
   steering.write(steering_angle);  //set the steering angle
   throttleSet();
-  bluetooth(8, throttle_delay_state);
-  throttle.write(throttle_speed/2);
+  bluetooth(8, 0);
+  throttle.write(throttle_speed/throttle_scalar);
 }
 
 void mpu() {
