@@ -5,6 +5,8 @@
 #define max_squared_distance_for_waypoint (1.2*1.2) //meters from target before target switches
 #define throttle_max 125
 #define throttle_stable 112
+#define throttle_timer 10
+int throttle_delay_state=0;
 bool throttle_started = 0;
 //speedometer constants
 
@@ -266,6 +268,33 @@ void bluetooth(int status,int error){ //debugging data this will do nothing duri
 
   Serial1.println("invalid bluetooth");
 }
+void throttleSet(){
+  if(!digitalRead(D5)){
+    throttle_speed=90;
+    throttle_started=0;
+    return;
+  }
+  if(throttle_started){
+    if(throttle_speed>throttle_stable){
+      if(throttle_delay_state>throttle_timer){
+        throttle_speed--;
+        throttle_delay_state=0;
+        return;
+      }
+      throttle_delay_state++;
+    }
+    return;
+  }
+  if(throttle_speed<throttle_max){
+    if(throttle_delay_state>throttle_timer){
+      throttle_speed++;
+      throttle_delay_state=0;
+      return;
+    }
+    throttle_delay_state++;
+  }
+  throttle_started=1;
+}
 
 void drive(){//this function controls the main driving opperations which must be done repeatedly.
   float dy = waypoints[seeking][0] - x[4][0]; // latitude
@@ -288,23 +317,8 @@ void drive(){//this function controls the main driving opperations which must be
                            min_steering_angle,
                            max_steering_angle);
   steering.write(steering_angle);//set the steering angle
-  if(digitalRead(D5)){
-    throttle_speed=throttle_max;
-    throttle.write(throttle_speed);//set the speed
-    
-    if(throttle_speed>=throttle_max){
-      throttle_started=1;
-    }
-    if(throttle_speed<throttle_max&& !throttle_started ){
-      throttle_speed++;
-    }else if( throttle_speed>throttle_stable){
-      throttle_speed--;
-    }
-  }else{
-    throttle_started=0;
-    throttle_speed=90;
-    throttle.write(90);
-  }
+  throttleSet();
+  throttle.write(throttle_speed);
 }
 
 void mpu(){
